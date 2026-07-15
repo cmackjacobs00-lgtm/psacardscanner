@@ -249,7 +249,10 @@ function refreshPills(){
   $('#apiPill').classList.toggle('ok',t);
   $('#sheetPill').classList.toggle('ok',s);
 }
-function buildQuery(c){return [c.year,c.brand,c.variety,c.subject,c.cardNumber?('#'+c.cardNumber):'','PSA '+c.grade].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();}
+// Card Ladder search title (no cert — cert would break a name search)
+function buildQuery(c){return [c.year,c.brand,c.subject,c.variety,c.cardNumber?('#'+c.cardNumber):'','PSA '+c.grade].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();}
+// Full sheet title — exact format: Year Brand Player Variety #Num PSA Grade Cert
+function buildCardTitle(c){return [c.year,c.brand,c.subject,c.variety,c.cardNumber?('#'+c.cardNumber):'','PSA '+c.grade,c.cert].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();}
 function clSearchUrl(c){return `https://app.cardladder.com/search?query=${encodeURIComponent(buildQuery(c))}`;}
 
 /* tabs */
@@ -370,18 +373,14 @@ window.saveToSheet=async function(){
   const clv=parseFloat($('#qCLV')?.value)||'';
   const paid=parseFloat($('#qPaid')?.value)||'';
   const rec={...CURRENT,id:'c'+Date.now(),ts:Date.now(),clv,paid,
-    profit:(clv!==''&&paid!=='')?(clv-paid):'',title:buildQuery(CURRENT),clUrl:clSearchUrl(CURRENT),synced:false};
+    profit:(clv!==''&&paid!=='')?(clv-paid):'',title:buildCardTitle(CURRENT),clUrl:clSearchUrl(CURRENT),synced:false};
   // local ledger first (never lose data)
   const l=DB.ledger;l.unshift(rec);DB.ledger=l.slice(0,2000);
-  // post to sheet if configured
+  // post to sheet if configured — exact 3-column format: Card | Paid | CL Value
   if(DB.sheet){
     try{
       await fetch(DB.sheet,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body:JSON.stringify({
-          cert:rec.cert,year:rec.year,brand:rec.brand,subject:rec.subject,variety:rec.variety,
-          cardNumber:rec.cardNumber,grade:rec.grade,pop:rec.pop,clValue:rec.clv,paid:rec.paid,
-          profit:rec.profit,title:rec.title,cardLadderUrl:rec.clUrl,ts:new Date().toISOString()
-        })});
+        body:JSON.stringify({card:rec.title,paid:rec.paid,clValue:rec.clv})});
       rec.synced=true;DB.ledger=DB.ledger; // persist synced flag
       const arr=DB.ledger;const f=arr.find(x=>x.id===rec.id);if(f)f.synced=true;DB.ledger=arr;
       toast('Saved to sheet ✓');
@@ -448,8 +447,7 @@ window.resyncCard=async function(id){
   const c=DB.ledger.find(x=>x.id===id);if(!c)return;
   if(!DB.sheet){toast('Add Sheet URL in Setup first');return;}
   try{await fetch(DB.sheet,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify({cert:c.cert,year:c.year,brand:c.brand,subject:c.subject,variety:c.variety,cardNumber:c.cardNumber,
-      grade:c.grade,pop:c.pop,clValue:c.clv,paid:c.paid,profit:c.profit,title:c.title,cardLadderUrl:c.clUrl,ts:new Date().toISOString()})});
+    body:JSON.stringify({card:c.title,paid:c.paid,clValue:c.clv})});
     const l=DB.ledger;const f=l.find(x=>x.id===id);if(f)f.synced=true;DB.ledger=l;toast('Sent to sheet ✓');closeSheet();renderLedger();
   }catch(e){toast('Sheet post failed');}
 };
@@ -465,8 +463,7 @@ $('#saveSetup').onclick=()=>{DB.token=$('#tokenInput').value.trim();DB.sheet=$('
 $('#testSheet').onclick=async()=>{
   if(!DB.sheet){toast('Paste your Sheet URL first');return;}
   try{await fetch(DB.sheet,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify({cert:'TEST',year:'2024',brand:'Cmack Flips',subject:'Connection test',variety:'',cardNumber:'',
-      grade:'10',pop:'',clValue:'',paid:'',profit:'',title:'Cmack Flips connection test',cardLadderUrl:'',ts:new Date().toISOString()})});
+    body:JSON.stringify({card:'*** Cmack Flips connection test ***',paid:'',clValue:''})});
     toast('Test row sent — check your sheet');}catch(e){toast('Could not reach the sheet');}
 };
 $('#exportBtn').onclick=()=>{const l=DB.ledger;if(!l.length){toast('Ledger empty');return;}
